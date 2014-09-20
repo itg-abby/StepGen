@@ -197,20 +197,29 @@ def main():
 	params['bpmval'] = '{0}'.format(bpm)
 	params['infile'] = '{0}'.format(sent_file.split('.')[0])
 	params['musicfile'] = '{0}'.format(sent_file)
-	with open('{0}_sm.txt'.format(sent_file),'w') as smfile:
+	with open('{0}.sm'.format(sent_file.split('.')[0]),'w') as smfile:
 		smfile.write(sm_template.format(**params))
 
 # Generate the SM based on the values found (Only 1 arrow in this version)
 	with open('{0}_stepseconds.txt'.format(sent_file), 'r') as complete_file:
 		with open('{0}_COMBINED.txt'.format(sent_file), 'r') as com_file:
-			with open('{0}_sm.txt'.format(sent_file),'a') as smfile:
+			with open('{0}.sm'.format(sent_file.split('.')[0]),'a') as smfile:
 				current_line = com_file.readline()
+				line_counter_a = 0
 				for line in complete_file:
 					if line == current_line:
 						smfile.write('1000\n')
 						current_line = com_file.readline()
+						line_counter_a = line_counter_a + 1
+						if float(line_counter_a) == roundsize:
+							smfile.write(',\n')
+							line_counter_a = 0
 					elif line != current_line:
-						smfile.write('0000\n')	
+						smfile.write('0000\n')
+						line_counter_a = line_counter_a + 1	
+						if float(line_counter_a) == roundsize:
+							smfile.write(',\n')
+							line_counter_a = 0
 		
 	os.remove('{0}_stepseconds.txt'.format(sent_file))
 	os.remove('{0}_COMBINED.txt'.format(sent_file))
