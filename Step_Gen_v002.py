@@ -3,18 +3,22 @@ import sys
 import numpy as np
 import math
 from scikits.audiolab import Sndfile
-from aubio import source, onset
 
-# AbderRahman (Abby) 's SM file generator v0.1
+import subprocess
+
+# itg-Abby 's SM file generator v0.2
 #
 # Dependent package listing for Linux users trying to run this script:
 # sudo apt-get install python-dev python-numpy python-setuptools libsndfile-dev python-scikits
 # python-audiolab flac vorbis-tools
 #
 #
-# What is in this version:
+# What is new in this version:
+# Now featuring the pitch detection option-set for much more relevant note selection.
+#
+# What is in this version from before:
 # Generates a SM file with arrow placement at every detected note onset via AUBIO options.
-# SM file is mostly just a basic skeleton file with left arrows at every note. You need to
+# SM file is just a basic skeleton file with left arrows at every note. You need to
 # still move these arrows around as desired (Also, don't forget to set your own SM offset)!
 #
 # General Notes:
@@ -25,8 +29,8 @@ from aubio import source, onset
 # ./python filename.ogg bpm stepsize -o OnsetMethod -s Silence -t OnsetThreshold
 #
 # Examples:
-# ./python Electro411.ogg 130.990 16
-# ./python Electro411.ogg 130.990 16 -o Default -s -90.0 -t 0.3
+# ./python StepGenScriptName Electro411.ogg 130.990 16
+# ./python StepGenScriptName Electro411.ogg 130.990 16 -o Default -s -90.0 -t 0.3
 #
 # Any AUBIO options will use their defaults if not filled in, so in my first example the 
 # OnsetMethod = Default, Silence = -90.0, and OnsetThreshold = 0.3
@@ -39,8 +43,8 @@ from aubio import source, onset
 #
 #
 # Planned future implementation:
-# - Actually provide popular arrow placements based on random seeds and on/off switches.
-# - Cleaner, more efficient code?
+# - Interface and executables
+# - Connecting this script to my other "Step Shuffle" script once it is completed
 #
 # Credits:
 # Developers of AUBIO, Python, and all the cool Python packages that made this possible.
@@ -49,9 +53,15 @@ from aubio import source, onset
 # *************************************************************************************
 #
 # Required inputs:
-# Arg1 - Filename, Arg2 - BPM estimate, Arg3 - desired step/note size to round to.
+# Arg1 - Filename,
+# Arg2 - BPM estimate,
+# Arg3 - desired step/note size to round to.
 # Optional Inputs:
-# Arg4 - Onset Type, Arg5 - Silence Threshold, Arg6 - Onset/Peak picking threshold
+# Arg4 (-o) - Onset Type,
+# Arg5 (-s) - Silence Threshold,
+# Arg6 (-t) - Onset/Peak picking threshold
+# Arg7 (-l) - Pitch Tolerance
+# Arg8 (-p) - Pitch Type
 #
 # Sample rates divisible by 4 and (3/25) are supported (i.e. not 11025, i.e. 44100).
 # Calculates fineness to the 192th note (higher accuracy isn't relevant), then performs rounding.
@@ -90,8 +100,30 @@ def main():
 		thresholdVal = float(sys.argv[tindex])
 	else:
 		thresholdVal = float(0.3)
+	if len(sys.argv) > 3 and ('-l' in sys.argv):
+		llindex = (sys.argv).index('-l')+1
+		ptolerance = float(sys.argv[llindex])
+	else:
+		ptolerance = float(0.0)
+	if len(sys.argv) > 3 and ('-p' in sys.argv):
+		ptindex = (sys.argv).index('-P')+1
+		pitchType = float(sys.argv[ptindex])
+	else:
+		pitchType = 'default'
 
-	aubiodat = aubiodata(sent_file, onsetType, thresholdVal, silenceVal)
+	print "bpm:{0} step:{1} file:{2} onset:{3} thresh:{4}\
+	 silence:{5} pitchTolerance:{6} pitchType:{7}\
+	 ".format(bpm, roundsize, sent_file, onsetType,\
+	  thresholdVal, silenceVal, ptolerance, pitchType)
+	  
+#	aubiodat = aubiodata(sent_file, onsetType, thresholdVal, silenceVal)
+#	aubiopit = aubiopitch(sent_file, pitchType, ptolerance, sr)
+	aubioNOTES(sent_file, onsetType, thresholdVal, silenceVal)
+	aubiodat = []
+	with open('audata','r') as nudatas:
+		for line in nudatas:
+			aubiodat.append(line)
+	
 #
 	bin_maximums_combined = sorted((bin_maximums + bin_maximums_shift), key=lambda x: x[1])
 	oneninetwo_frames = (((60000/float((bpm*(192/4)))))*0.001*sr)
@@ -103,37 +135,44 @@ def main():
 
 
 
-# Round the data to the desired time lengths, rounding only occurs if an amplitude is within a 64th note of the desired note type. A 64th is the smallest reasonable gap for the human ear to be able to notice a difference in rounding to less frequent note divisions at tempos that are above 100bpm. Silence is favored over an "off-synch" note. For example: at 100 bpm, a 64th note is equivalent to 0.037 seconds and a 16th note is equivalent to 0.150 seconds . If rounding to the 16th note was desired and a note was found at 0.120, a note would be placed at 0.150. If the note was found at 0.036, a note would be placed at 0.000. If the note was found at 0.075, no note would be placed.
+# Round the data to the desired time lengths, rounding only occurs if an amplitude is
+# within a 64th note of the desired note type. A 64th is the smallest reasonable gap
+# for the human ear to be able to notice a difference in rounding to less frequent note
+# divisions at tempos that are above 100bpm. Silence is favored over an "off-synch" note.
+# For example: at 100 bpm, a 64th note is equivalent to 0.037 seconds and a 16th note is
+# equivalent to 0.150 seconds . If rounding to the 16th note was desired and a note was
+# found at 0.120, a note would be placed at 0.150. If the note was found at 0.036, a note
+# would be placed at 0.000. If the note was found at 0.075, no note would be placed.
 
-# Need to unindent this, but for now I will just use an if-1.
-	if 1:
-		previous_time = float(0)
-		for item in bin_maximums_combined:
-			if (float(item[1]) != previous_time):
-				bin_maximums_rounded.append(item)
-			previous_time = float(item[1])
+	previous_time = float(-10)
+	for item in bin_maximums_combined:
+		if (float(item[1]) != previous_time):
+			bin_maximums_rounded.append(item)
+		previous_time = float(item[1])
 
 
-		previous_time = float(0)
-		previous_val = float(0)				
-		for item in bin_maximums_rounded:
-			value_check = 1
-			for offset in value_shifts:
-				offset_time = (item[1] + offset)
-				offset_time_sec = round((item[1] + offset)/float(sr),3)
-				if value_check:
-					if (int(offset_time % rounded_frames) == 0):
-						if (float(offset_time_sec) == previous_time) and (float(item[0]) > previous_val):
-							try:
-								bin_maximums_duped.pop()
-							except IndexError:
-								pass
-							bin_maximums_duped.append((item[0],offset_time))
-						if (float(offset_time_sec) != previous_time):
-							bin_maximums_duped.append((item[0],offset_time))
-						value_check = 0
-						previous_time = float(offset_time_sec)
-						previous_val = float(item[0])
+	previous_time = float(0)
+	previous_val = float(0)				
+
+# Write the rounded data to file
+	for item in bin_maximums_rounded:
+		value_check = 1
+		for offset in value_shifts:
+			offset_time = (item[1] + offset)
+			offset_time_sec = round((item[1] + offset)/float(sr),3)
+			if value_check:
+				if (int(offset_time % rounded_frames) == 0):
+					if (float(offset_time_sec) == previous_time) and (float(item[0]) > previous_val):
+						try:
+							bin_maximums_duped.pop()
+						except IndexError:
+							pass
+						bin_maximums_duped.append((item[0],offset_time))
+					if (float(offset_time_sec) != previous_time):
+						bin_maximums_duped.append((item[0],offset_time))
+					value_check = 0
+					previous_time = float(offset_time_sec)
+					previous_val = float(item[0])
 
 
 # Write the rounded data to file
@@ -189,7 +228,7 @@ def main():
 #NOTES:
      dance-single:
      Blank:
-     Beginner:
+     Expert:
      111:
      0.000,0.000,0.000,0.000,0.000:
 """
@@ -220,44 +259,45 @@ def main():
 						if float(line_counter_a) == roundsize:
 							smfile.write(',\n')
 							line_counter_a = 0
+				smfile.write(';\n')
 		
-	os.remove('{0}_stepseconds.txt'.format(sent_file))
-	os.remove('{0}_COMBINED.txt'.format(sent_file))
+#	os.remove('{0}_stepseconds.txt'.format(sent_file))
+#	os.remove('{0}_COMBINED.txt'.format(sent_file))
 
 # <<<<<<<<<<< END OF MAIN PROGRAM >>>>>>>>>>>>
 
+
 # AUBIO datagen
-def aubiodata(filename, onsetType, threshold, silence):
-	win_s = 512                 # fft size
-	hop_s = win_s / 2           # hop size
-	samplerate = 0		    # Just an initial setting
-#	threshold = 0.8
-#	silence = -10
+def aubioNOTES(filename, onsetType, threshold, silence):
+#	runstring = 'aubionotes -i {0} -v'.format(filename)
+	raN = subprocess.Popen(['aubionotes_local.exe -i {0} -v'.format(filename)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
 
-	s = source(filename, samplerate, hop_s)
-	samplerate = s.samplerate
+	stdout, stderr = raN.communicate()
 
-	o = onset(onsetType, win_s, hop_s, samplerate)
- 	o.set_threshold(threshold)
- 	o.set_silence(silence)
-	# list of onsets, in seconds
-	onsets = []
+	with open('stdout','w') as f1:
+#		stdout= sys.stdout
+		f1.write('{0}'.format(stdout))
+	with open('stderr','w') as f2:
+#		stderr= subprocess.PIPE
+		f2.write('{0}'.format(stderr))
+		
+	with open('stdout','r') as parsed:
+		with open('audata','w') as nudatas:
+			parsed.readline()
+			parsed.readline()
+			parsed.readline()
+			parsed.readline()
+			for line in parsed:
+				try:
+					nudatas.write('{0}\n'.format(line.split()[1]))
+				except IndexError:
+					pass
+			
 
-	# total number of frames read
-	total_frames = 0
-	while True:
-	    samples, read = s()
-	    if o(samples):
-	#        print "%f" % o.get_last_s()
-	        onsets.append(o.get_last_s())
-	    total_frames += read
-	    if read < hop_s: break
+		
+		
 
 
-	# 'onsets' holds, at each entry, the time where an onset is detected (in seconds).
-	return onsets
-
-# bin_size is in number of frames per stepsize/bpm given.
 def populate_list(bin_size):
 	newbinmaxs = []
 	curr_bin = 0
