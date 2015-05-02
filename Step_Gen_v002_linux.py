@@ -270,7 +270,7 @@ def main():
 # AUBIO datagen
 def aubioNOTES(filename, onsetType, threshold, silence):
 #	runstring = 'aubionotes -i {0} -v'.format(filename)
-	raN = subprocess.Popen(['aubionotes_local.exe -i {0} -v'.format(filename)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+	raN = subprocess.Popen(['./aubionotes_local -i {0} -v'.format(filename)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
 
 	stdout, stderr = raN.communicate()
 
