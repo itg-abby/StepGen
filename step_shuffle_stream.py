@@ -43,12 +43,19 @@ def main():
 #	sm_file = '{0}.sm'.format(sent_file.split('.')[0])
 	sm_file = sys.argv[1]
 
+	count = 0
+	
+	while os.path.exists('newstep_'+'{0}'.format(count)+sm_file.split('.sm')[0]+'.sm'):
+		count = count + 1
+
+	new_sm_name = 'newstep_'+'{0}'.format(count)+sm_file.split('.sm')[0]+'.sm'
+
 # read the first stepchart found as an array
 	smdata = []
 	countme = 0
 	read_sm = 0
 	with open(sm_file, 'r') as infile:
-		with open('newstep.sm','w') as newstep:
+		with open(new_sm_name,'w') as newstep:
 			for line in infile:
 				if (read_sm == 0 and countme != 6):
 					newstep.write(line)
@@ -60,7 +67,6 @@ def main():
 				try:
 					if (line.split()[0] == "#NOTES:"):
 						countme = countme+1
-						print "hi"
 				except IndexError:
 					pass
 
@@ -86,16 +92,19 @@ def main():
 # step resets? i.e. L+R
 
 # 0 = Left foot start, 1 = Right foot start
-	start_foot = randint(0,1)
+#	start_foot = randint(0,1)
+	start_foot = 1
 #	previous_step = "1001"
 	previous_step = "1000"
 	previous_foot = 0
 
-	with open('newstep.sm', 'a') as newstep:
+
+	with open(new_sm_name, 'a') as newstep:
 #	with open('newstep2.sm', 'w') as newstep:
 		for items in step_blocks:
+
 			item = items.split('\n')[0]
-			if (item != "0000"):
+			if (item != "0000" and item !="," and item !=";"):
 				item = gen_step(start_foot, previous_step, previous_foot)[0]
 				previous_step = item
 				if (start_foot == 0):
@@ -107,6 +116,27 @@ def main():
 
 			newstep.write("{0}\n".format(item))
 			
+
+
+
+
+#def gen_pat(start_foot, previous_step, previous_foot):
+# LDUR = 0000
+# 0 = Left foot start, 1 = Right foot start
+#
+# Given random number of arrows (1~10?), place the arrows in a known pattern
+# Inputs: a block of arrows to place OR "commands" to send to "gen_step"
+#	if len(step_block) == 1:
+#		step_gen()
+#	elif len(step_block) == 2:
+#	elif len(step_block) == 3:
+
+# ...
+
+#	return placement
+
+
+
 
 
 def gen_step(start_foot, previous_step, previous_foot):
